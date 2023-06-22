@@ -38,7 +38,7 @@ def get_args_parser():
     parser.add_argument('--batch_size', default=32, type=int,
                         help='Batch size per GPU (effective batch size is batch_size * accum_iter * # gpus')
     parser.add_argument('--epochs', default=50, type=int)
-    parser.add_argument('--accum_iter', default=4, type=int,
+    parser.add_argument('--accum_iter', default=2, type=int,
                         help='Accumulate gradient iterations (for increasing the effective batch size under memory constraints)')
 
     # Model parameters
@@ -47,6 +47,9 @@ def get_args_parser():
 
     parser.add_argument('--input_size', default=224, type=int,
                         help='images input size')
+
+    parser.add_argument('--mask_ratio', default=0.75, type=float,
+                    help='Masking ratio (percentage of removed patches).')
 
     parser.add_argument('--drop_path', type=float, default=0.1, metavar='PCT',
                         help='Drop path rate (default: 0.1)')
@@ -98,7 +101,7 @@ def get_args_parser():
                         help='Perform evaluation only')
     parser.add_argument('--dist_eval', action='store_true', default=False,
                         help='Enabling distributed evaluation (recommended during training for faster monitor')
-    parser.add_argument('--num_workers', default=10, type=int)
+    parser.add_argument('--num_workers', default=2, type=int)
     parser.add_argument('--pin_mem', action='store_true',
                         help='Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.')
     parser.add_argument('--no_pin_mem', action='store_false', dest='pin_mem')
@@ -116,8 +119,6 @@ def get_args_parser():
 
 
 def main(args):
-    misc.init_distributed_mode(args)
-
     print('job dir: {}'.format(os.path.dirname(os.path.realpath(__file__))))
     print("{}".format(args).replace(', ', ',\n'))
 
@@ -140,28 +141,10 @@ def main(args):
     dataset_val = datasets.ImageFolder(os.path.join(args.data_path, 'test'), transform=transform)
     print(dataset_val)
 
-    if True:  # args.distributed:
-        num_tasks = misc.get_world_size()
-        global_rank = misc.get_rank()
-        sampler_train = torch.utils.data.DistributedSampler(
-            dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
-        )
-        print("Sampler_train = %s" % str(sampler_train))
-        if args.dist_eval:
-            if len(dataset_val) % num_tasks != 0:
-                print('Warning: Enabling distributed evaluation with an eval dataset not divisible by process number. '
-                      'This will slightly alter validation results as extra duplicate entries are added to achieve '
-                      'equal num of samples per-process.')
-            sampler_val = torch.utils.data.DistributedSampler(
-                dataset_val, num_replicas=num_tasks, rank=global_rank,
-                shuffle=True)  # shuffle=True to reduce monitor bias
-        else:
-            sampler_val = torch.utils.data.SequentialSampler(dataset_val)
-    else:
-        sampler_train = torch.utils.data.RandomSampler(dataset_train)
-        sampler_val = torch.utils.data.SequentialSampler(dataset_test)
+    sampler_train = torch.utils.data.RandomSampler(dataset_train)
+    sampler_val = torch.utils.data.SequentialSampler(dataset_val)
 
-    if global_rank == 0 and args.log_dir is not None and not args.eval:
+    if args.log_dir is not None and not args.eval:
         os.makedirs(args.log_dir, exist_ok=True)
         log_writer = SummaryWriter(log_dir=args.log_dir)
     else:
@@ -218,10 +201,6 @@ def main(args):
     print("accumulate grad iterations: %d" % args.accum_iter)
     print("effective batch size: %d" % eff_batch_size)
 
-    if args.distributed:
-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
-        model_without_ddp = model.module
-
     # build optimizer with layer-wise lr decay (lrd)
     param_groups = lrd.param_groups_lrd(model_without_ddp, args.weight_decay,
                                         layer_decay=args.layer_decay
@@ -233,14 +212,12 @@ def main(args):
 
     if args.eval:
         test_stats = evaluate(data_loader_val, model, device)
-        print(f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
+        print(f"Loss of the network on the {len(dataset_val)} test images: {test_stats['loss']:.3f}")
         exit(0)
 
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
     for epoch in range(args.start_epoch, args.epochs):
-        if args.distributed:
-            data_loader_train.sampler.set_epoch(epoch)
         train_stats = train_one_epoch(
             model, data_loader_train,
             optimizer, device, epoch, loss_scaler,

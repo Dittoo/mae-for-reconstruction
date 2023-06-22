@@ -15,9 +15,6 @@ from typing import Iterable, Optional
 
 import torch
 
-from timm.data import Mixup
-from timm.utils import accuracy
-
 import util.misc as misc
 import util.lr_sched as lr_sched
 

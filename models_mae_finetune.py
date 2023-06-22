@@ -169,12 +169,18 @@ class MaskedAutoencoderViT(nn.Module):
         pred: [N, L, p*p*3]
         mask: [N, L], 0 is keep, 1 is remove,
         """
+        """
         p = self.patch_embed.patch_size[0]
         pred = self.unpatchify(pred)  # [N, 3, H, W]
         mask = mask.unsqueeze(-1).repeat(1, 1, p ** 2 * 3)  # (N, H*W, p*p*3)
         mask = self.unpatchify(mask)  # 1 is removing, 0 is keeping
         reconstruction = imgs * (1 - mask) + pred * mask
         loss = F.mse_loss(reconstruction, imgs)
+        """
+        target = self.patchify(imgs)
+        loss = (pred - target) ** 2
+        loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
+        loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
         return loss
 
     def forward(self, imgs, mask_ratio=0.75):
