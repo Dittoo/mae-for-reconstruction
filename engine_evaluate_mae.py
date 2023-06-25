@@ -132,4 +132,4 @@ def evaluate(data_loader, model, device):
     labels = torch.where(targets == class_to_idx['good'], 0, 1)
     roc_auc = roc_auc_score(labels, anomaly_scores)
     print('* roc_auc {:.3f}'.format(roc_auc))
-    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+    return roc_auc
