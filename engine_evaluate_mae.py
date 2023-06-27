@@ -96,8 +96,7 @@ def evaluate(data_loader, model, device):
     # switch to evaluation mode
     model.eval()
 
-    # for batch in metric_logger.log_every(data_loader, 10, header):
-    for batch in data_loader:
+    for batch in metric_logger.log_every(data_loader, 10, header):
         images = batch[0]
         images = images.to(device, non_blocking=True)
 
