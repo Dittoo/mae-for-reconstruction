@@ -98,12 +98,12 @@ def evaluate(data_loader, model, device):
 
     for batch in metric_logger.log_every(data_loader, 10, header):
         images = batch[0]
-        # images = images.to(device, non_blocking=True)
+        images = images.to(device, non_blocking=True)
 
         # compute output
         for i in range(32):
-            # with torch.cuda.amp.autocast():
-            loss, error_map, _, _ = model(images)
+            with torch.cuda.amp.autocast():
+                loss, error_map, _, _ = model(images)
             if i == 0:
                 error_map_sum = error_map
             else:
