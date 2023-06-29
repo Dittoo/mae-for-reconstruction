@@ -178,22 +178,22 @@ class MaskedAutoencoderViT(nn.Module):
         pred: [N, L, p*p*3]
         mask: [N, L], 0 is keep, 1 is remove,
         """
-        target = self.patchify(imgs)
-        loss = (pred - target) ** 2
-        loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
+        target = self.patchify(imgs) # (32,196,768)
+        loss = (pred - target) ** 2 # (32,196,768)
+        loss = loss.mean(dim=-1)  # [N, L], mean loss per patch  # (32,196)
         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
         # reconstruction
-        p = self.patch_embed.patch_size[0]
-        pred = self.unpatchify(pred)  # [N, 3, H, W]
-        mask = mask.unsqueeze(-1).repeat(1, 1, p ** 2 * 3)  # (N, H*W, p*p*3)
-        mask = self.unpatchify(mask)  # 1 is removing, 0 is keeping
-        reconstruction = imgs * (1 - mask) + pred * mask
-        error_map = self.compute_error_map(imgs, reconstruction)
+        p = self.patch_embed.patch_size[0] # 16
+        pred = self.unpatchify(pred)  # [N, 3, H, W] (32, 3, 224, 224)
+        mask = mask.unsqueeze(-1).repeat(1, 1, p ** 2 * 3)  # (N, H*W, p*p*3) (32, 196, 768)
+        mask = self.unpatchify(mask)  # 1 is removing, 0 is keeping (32, 3, 224, 224)
+        reconstruction = imgs * (1 - mask) + pred * mask # (32, 3, 224, 224)
+        error_map = self.compute_error_map(imgs, reconstruction) # (32, 224, 224)
         return loss, error_map
 
     def forward(self, imgs, mask_ratio=0.75):
-        latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio)
-        pred = self.forward_decoder(latent, ids_restore)  # [N, L, p*p*3]
+        latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio) # (32, 50, 768), (32,196), (32,196)
+        pred = self.forward_decoder(latent, ids_restore)  # [N, L, p*p*3] (32, 196, 768)
         loss, error_map = self.forward_loss(imgs, pred, mask)
         return loss, error_map, pred, mask
 
